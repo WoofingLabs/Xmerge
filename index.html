@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xmerge NFT - 铸造与合并</title>
+    <link rel="icon" href="https://woofingjace.com/images/jace.png" type="image/x-icon">
+    <style>
+        body {
+            background: #000000;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            color: #ffffff;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #1a1a1a;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            text-align: center;
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #ffffff;
+        }
+        .section {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #ffffff;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            background: #2d2d2d;
+            border: 1px solid #444444;
+            color: #ffffff;
+            border-radius: 4px;
+        }
+        button {
+            background: #333333;
+            color: #ffffff;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 5px;
+        }
+        button:hover {
+            background: #444444;
+        }
+        .percent-buttons {
+            margin: 10px 0;
+        }
+        .percent-buttons button {
+            margin-right: 5px;
+        }
+        .status {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #ff9100;
+            text-align: center;
+        }
+        .balance {
+            margin: 10px 0;
+            font-size: 14px;
+            color: #a5b4fc;
+        }
+        .disabled {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+        .nft-item {
+            padding: 10px;
+            background: #2d2d2d;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .nft-item:hover {
+            background: #373b5c;
+        }
+        .nft-item .nft-id {
+            font-weight: 600;
+        }
+        .nft-item .mass {
+            color: #a5b4fc;
+        }
+        .nft-item .action-buttons button {
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Xmerge NFT - 铸造与合并</h1>
+        <div class="section">
+            <button id="connectWallet" class="button">连接钱包</button>
+            <div id="walletStatus" class="status">未连接</div>
+        </div>
+        <div class="section">
+            <div class="balance">
+                <p>总铸造量: <span id="totalMinted">0</span></p>
+                <p>当前供应量: <span id="totalSupply">0</span></p>
+                <p>账户已铸造: <span id="mintsPerAddress">0</span> / 2</p>
+            </div>
+        </div>
+        <div class="section">
+            <label>铸造说明</label>
+            <div class="balance">每个地址最多可免费铸造 2 个 Xmerge NFT，质量为 1。合并两个 NFT 可将其质量相加（最大 1000）。</div>
+            <button id="mintButton" onclick="mintNFT()" disabled>铸造 NFT</button>
+        </div>
+        <div class="section">
+            <label>合并 NFT</label>
+            <select id="nftSelect1" onchange="updateMergeButton()" disabled>
+                <option value="-1">选择 NFT 1</option>
+            </select>
+            <select id="nftSelect2" onchange="updateMergeButton()" disabled>
+                <option value="-1">选择 NFT 2</option>
+            </select>
+            <button id="mergeButton" onclick="mergeNFTs()" disabled>合并</button>
+        </div>
+        <div class="section">
+            <label>我的 NFT</label>
+            <div id="nftList" class="balance"></div>
+            <div id="status" class="status"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.7.0/dist/web3.min.js"></script>
+    <script>
+        let web3, accounts, contract;
+        const contractAddress = "0x53b42a35cb2764883108EC34154B55d25f1d910D";
+        const contractABI = [
+            {
+                "inputs": [],
+                "stateMutability": "nonpayable",
+                "type": "constructor"
+            },
+            {
+                "anonymous": false,
+                "inputs": [
+                    {"indexed": true, "internalType": "address", "name": "from", "type": "address"},
+                    {"indexed": true, "internalType": "address", "name": "to", "type": "address"},
+                    {"indexed": true, "internalType": "uint256", "name": "tokenId", "type": "uint256"}
+                ],
+                "name": "Transfer",
+                "type": "event"
+            },
+            {
+                "anonymous": false,
+                "inputs": [
+                    {"indexed": true, "internalType": "address", "name": "owner", "type": "address"},
+                    {"indexed": true, "internalType": "address", "name": "approved", "type": "address"},
+                    {"indexed": true, "internalType": "uint256", "name": "tokenId", "type": "uint256"}
+                ],
+                "name": "Approval",
+                "type": "event"
+            },
+            {
+                "anonymous": false,
+                "inputs": [
+                    {"indexed": true, "internalType": "address", "name": "owner", "type": "address"},
+                    {"indexed": true, "internalType": "address", "name": "operator", "type": "address"},
+                    {"indexed": false, "internalType": "bool", "name": "approved", "type": "bool"}
+                ],
+                "name": "ApprovalForAll",
+                "type": "event"
+            },
+            {
+                "anonymous": false,
+                "inputs": [
+                    {"indexed": true, "internalType": "uint256", "name": "tokenIdBurned", "type": "uint256"},
+                    {"indexed": true, "internalType": "uint256", "name": "tokenIdPersist", "type": "uint256"},
+                    {"indexed": false, "internalType": "uint256", "name": "newMass", "type": "uint256"}
+                ],
+                "name": "MassUpdate",
+                "type": "event"
+            },
+            {
+                "anonymous": false,
+                "inputs": [
+                    {"indexed": true, "internalType": "uint256", "name": "tokenId", "type": "uint256"},
+                    {"indexed": true, "internalType": "address", "name": "to", "type": "address"},
+                    {"indexed": false, "internalType": "uint256", "name": "mass", "type": "uint256"}
+                ],
+                "name": "NewNFTMinted",
+                "type": "event"
+            },
+            {
+                "inputs": [],
+                "name": "MAX_SUPPLY",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "MAX_X_MASS",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "MAX_MINTS_PER_ADDRESS",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "mint",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"internalType": "uint256", "name": "tokenId1", "type": "uint256"},
+                    {"internalType": "uint256", "name": "tokenId2", "type": "uint256"}
+                ],
+                "name": "merge",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"internalType": "uint256", "name": "index", "type": "uint256"}
+                ],
+                "name": "tokenByIndex",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"internalType": "address", "name": "owner_", "type": "address"}
+                ],
+                "name": "tokensOfOwner",
+                "outputs": [{"internalType": "uint256[]", "name": "", "type": "uint256[]"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"internalType": "uint256", "name": "tokenId", "type": "uint256"}
+                ],
+                "name": "massOf",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"internalType": "uint256", "name": "tokenId", "type": "uint256"}
+                ],
+                "name": "tokenURI",
+                "outputs": [{"internalType": "string", "name": "", "type": "string"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "name",
+                "outputs": [{"internalType": "string", "name": "", "type": "string"}],
+                "stateMutability": "pure",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "symbol",
+                "outputs": [{"internalType": "string", "name": "", "type": "string"}],
+                "stateMutability": "pure",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "owner",
+                "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "withdraw",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "getTotalMinted",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+               SERGE NFT - MINT & MERGE
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "totalSupply",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"internalType": "address", "name": "account", "type": "address"}
+                ],
+                "name": "mintsPerAddress",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"internalType": "address", "name": "owner_", "type": "address"}
+                ],
+                "name": "balanceOf",
+                "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"internalType": "uint256", "name": "tokenId", "type": "uint256"}
+                ],
+                "name": "ownerOf",
+                "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"internalType": "address", "name": "to", "type": "address"},
+                    {"internalType": "uint256", "name": "tokenId", "type": "uint256"}
+                ],
+                "name": "approve",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"internalType": "uint256", "name": "tokenId", "type": "uint256"}
+                ],
+                "name": "getApproved",
+                "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"internalType": "address", "name": "operator", "type": "address"},
+                    {"internalType": "bool", "name": "approved", "type": "bool"}
+                ],
+                "name": "setApprovalForAll",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"internalType": "address", "name": "owner_", "type": "address"},
+                    {"internalType": "address", "name": "operator", "type": "address"}
+                ],
+                "name": "isApprovedForAll",
+                "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"internalType": "address", "name": "from", "type": "address"},
+                    {"internalType": "address", "name": "to", "type": "address"},
+                    {"internalType": "uint256", "name": "tokenId", "type": "uint256"}
+                ],
+                "name": "transferFrom",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"internalType": "address", "name": "from", "type": "address"},
+                    {"internalType": "address", "name": "to", "type": "address"},
+                    {"internalType": "uint256", "name": "tokenId", "type": "uint256"}
+                ],
+                "name": "safeTransferFrom",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"internalType": "address", "name": "from", "type": "address"},
+                    {"internalType": "address", "name": "to", "type": "address"},
+                    {"internalType": "uint256", "name": "tokenId", "type": "uint256"},
+                    {"internalType": "bytes", "name": "_data", "type": "bytes"}
+                ],
+                "name": "safeTransferFrom",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"internalType": "bytes4", "name": "interfaceId", "type": "bytes4"}
+                ],
+                "name": "supportsInterface",
+                "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+                "stateMutability": "pure",
+                "type": "function"
+            },
+            {
+                "stateMutability": "payable",
+                "type": "receive"
+            }
+        ];
+        const xLayer = {
+            chainId: 196,
+            chainName: 'X Layer',
+            nativeCurrency: { name: 'OKB', symbol: 'OKB', decimals: 18 },
+            rpcUrls: ['https://rpc.xlayer.tech'],
+            blockExplorerUrls: ['https://www.oklink.com/xlayer']
+        };
+
+        async function connectWallet() {
+            const walletStatus = document.getElementById('walletStatus');
+            try {
+                if (!window.ethereum) throw new Error("未检测到钱包");
+                walletStatus.innerText = "连接中...";
+                web3 = new Web3(window.ethereum);
+                accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                if (!accounts.length) throw new Error("请解锁钱包");
+                const chainId = await web3.eth.getChainId();
+                if (chainId !== 196) {
+                    try {
+                        await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: "0xc4" }] });
+                    } catch (switchError) {
+                        if (switchError.code === 4902) {
+                            await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [xLayer] });
+                        } else {
+                            throw switchError;
+                        }
+                    }
+                }
+                walletStatus.innerText = `已连接: ${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}`;
+                contract = new web3.eth.Contract(contractABI, contractAddress);
+                enableInputs(true);
+                updateStats();
+                loadMyNFTs();
+                setupEventListeners();
+            } catch (error) {
+                walletStatus.innerText = "连接失败: " + error.message;
+            }
+        }
+
+        function enableInputs(enabled) {
+            document.getElementById('mintButton').disabled = !enabled;
+            document.getElementById('nftSelect1').disabled = !enabled;
+            document.getElementById('nftSelect2').disabled = !enabled;
+            document.getElementById('mergeButton').disabled = !enabled || document.getElementById('nftSelect1').value === "-1" || document.getElementById('nftSelect2').value === "-1";
+        }
+
+        async function updateStats() {
+            if (!contract) return;
+            try {
+                const totalMinted = await contract.methods.getTotalMinted().call();
+                document.getElementById('totalMinted').innerText = totalMinted;
+                const totalSupply = await contract.methods.totalSupply().call();
+                document.getElementById('totalSupply').innerText = totalSupply;
+                const mintsPerAddress = await contract.methods.mintsPerAddress(accounts[0]).call();
+                document.getElementById('mintsPerAddress').innerText = mintsPerAddress;
+            } catch (error) {
+                document.getElementById('status').innerText = "加载统计数据失败: " + error.message;
+            }
+        }
+
+        async function mintNFT() {
+            if (!contract || !accounts) {
+                document.getElementById('status').innerText = "请先连接钱包！";
+                return;
+            }
+            const status = document.getElementById('status');
+            try {
+                status.innerText = "铸造中...";
+                const gas = await contract.methods.mint().estimateGas({ from: accounts[0] });
+                await contract.methods.mint().send({ from: accounts[0], gas: Math.floor(gas * 1.2) });
+                status.innerText = "NFT 铸造成功！";
+                updateStats();
+                loadMyNFTs();
+            } catch (error) {
+                status.innerText = "铸造失败: " + error.message;
+            }
+        }
+
+        async function loadMyNFTs() {
+            if (!contract || !accounts) return;
+            const nftList = document.getElementById('nftList');
+            const nftSelect1 = document.getElementById('nftSelect1');
+            const nftSelect2 = document.getElementById('nftSelect2');
+            nftList.innerHTML = '';
+            nftSelect1.innerHTML = '<option value="-1">选择 NFT 1</option>';
+            nftSelect2.innerHTML = '<option value="-1">选择 NFT 2</option>';
+            try {
+                const tokenIds = await contract.methods.tokensOfOwner(accounts[0]).call();
+                if (!tokenIds.length) {
+                    nftList.innerHTML = '<div class="status">尚未拥有任何 NFT。</div>';
+                    return;
+                }
+                let html = '';
+                for (let id of tokenIds) {
+                    const mass = await contract.methods.massOf(id).call();
+                    html += `
+                        <div class="nft-item">
+                            <div class="nft-id">NFT #${id}</div>
+                            <div class="mass">质量: ${mass}</div>
+                            <div class="action-buttons">
+                                <button onclick="viewNFT(${id})">查看</button>
+                            </div>
+                        </div>
+                    `;
+                    nftSelect1.innerHTML += `<option value="${id}">${id} (质量: ${mass})</option>`;
+                    nftSelect2.innerHTML += `<option value="${id}">${id} (质量: ${mass})</option>`;
+                }
+                nftList.innerHTML = html;
+            } catch (error) {
+                nftList.innerHTML = '<div class="status">加载 NFT 失败: ' + error.message + '</div>';
+            }
+            updateMergeButton();
+        }
+
+        function viewNFT(tokenId) {
+            window.open(`https://www.oklink.com/xlayer/nft/${contractAddress}/${tokenId}`, '_blank');
+        }
+
+        function updateMergeButton() {
+            const nftSelect1 = document.getElementById('nftSelect1');
+            const nftSelect2 = document.getElementById('nftSelect2');
+            const mergeButton = document.getElementById('mergeButton');
+            mergeButton.disabled = nftSelect1.value === "-1" || nftSelect2.value === "-1" || nftSelect1.value === nftSelect2.value;
+        }
+
+        async function mergeNFTs() {
+            if (!contract || !accounts) {
+                document.getElementById('status').innerText = "请先连接钱包！";
+                return;
+            }
+            const nftSelect1 = document.getElementById('nftSelect1');
+            const nftSelect2 = document.getElementById('nftSelect2');
+            const status = document.getElementById('status');
+            if (nftSelect1.value === "-1" || nftSelect2.value === "-1" || nftSelect1.value === nftSelect2.value) {
+                status.innerText = "请选择两个不同的 NFT！";
+                return;
+            }
+            try {
+                status.innerText = "合并中...";
+                const gas = await contract.methods.merge(nftSelect1.value, nftSelect2.value).estimateGas({ from: accounts[0] });
+                await contract.methods.merge(nftSelect1.value, nftSelect2.value).send({ from: accounts[0], gas: Math.floor(gas * 1.2) });
+                status.innerText = "NFT 合并成功！";
+                loadMyNFTs();
+                updateStats();
+            } catch (error) {
+                status.innerText = "合并失败: " + error.message;
+            }
+        }
+
+        function setupEventListeners() {
+            if (!contract) return;
+            contract.events.NewNFTMinted({ filter: { to: accounts[0] } }, () => {
+                document.getElementById('status').innerText = "新 NFT 铸造成功！";
+                updateStats();
+                loadMyNFTs();
+            });
+            contract.events.MassUpdate({}, () => {
+                document.getElementById('status').innerText = "NFT 合并成功！";
+                updateStats();
+                loadMyNFTs();
+            });
+            contract.events.Transfer({ filter: { to: accounts[0] } }, () => {
+                loadMyNFTs();
+            });
+        }
+
+        document.getElementById('connectWallet').addEventListener('click', connectWallet);
+
+        window.ethereum?.on('chainChanged', (chainId) => {
+            if (parseInt(chainId, 16) !== 196) {
+                document.getElementById('walletStatus').innerText = "网络错误，请重新连接到 X Layer。";
+                web3 = null;
+                contract = null;
+                accounts = null;
+                enableInputs(false);
+            } else {
+                connectWallet();
+            }
+        });
+
+        window.ethereum?.on('accountsChanged', (newAccounts) => {
+            if (newAccounts.length) {
+                connectWallet();
+            } else {
+                web3 = null;
+                contract = null;
+                accounts = null;
+                document.getElementById('walletStatus').innerText = "未连接";
+                enableInputs(false);
+            }
+        });
+    </script>
+</body>
+</html>
