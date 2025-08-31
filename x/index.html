@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xerge NFT Preview</title>
+    <style>
+        body {
+            background-color: #000000;
+            color: #FFFFFF;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        #canvas {
+            border: 2px solid #333333; /* Slightly darker border for contrast */
+        }
+        #slider-container {
+            margin-top: 20px;
+            text-align: center;
+        }
+        #mass {
+            width: 300px;
+            height: 8px;
+            background: #333333;
+            border-radius: 5px;
+            outline: none;
+            -webkit-appearance: none;
+            cursor: pointer;
+        }
+        #mass::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #FFD700; /* Gold to match final color */
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        #mass-value {
+            font-size: 20px;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        label {
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas" width="500" height="500"></canvas>
+    <div id="slider-container">
+        <label for="mass">Mass (1-1000): </label>
+        <input type="range" id="mass" min="1" max="1000" value="1">
+        <div id="mass-value">Mass: 1</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const massSlider = document.getElementById('mass');
+        const massValue = document.getElementById('mass-value');
+
+        // X shape cell indices in 5x5 grid: (2,2), (2,4), (3,3), (4,2), (4,4)
+        const xCells = [6, 8, 12, 16, 18];
+        const MAX_X_MASS = 1000;
+
+        // Function to calculate scale with finer steps
+        function getScale(mass) {
+            if (mass >= MAX_X_MASS) return 100; // 300x300 pixels
+            // Linear interpolation from 10 (30x30) to 100 (300x300) over 1000 mass
+            return 10 + (mass - 1) * 0.09; // 0.09 per mass step
+        }
+
+        // Function to calculate color with 1000 unique stages
+        function getColor(mass) {
+            if (mass >= MAX_X_MASS) return '#FFD700';
+            const step = mass - 1; // 0 to 999
+            // Start color: #FFFFFF (255, 255, 255)
+            // End color: #FFD700 (255, 215, 0)
+            const rStart = 255, gStart = 255, bStart = 255;
+            const rEnd = 255, gEnd = 215, bEnd = 0;
+
+            // Linear interpolation
+            const r = rStart - Math.floor(((rStart - rEnd) * step) / 999);
+            const g = gStart - Math.floor(((gStart - gEnd) * step) / 999);
+            const b = bStart - Math.floor(((bStart - bEnd) * step) / 999);
+
+            // Convert to hex #RRGGBB
+            const toHex = (value) => {
+                const hex = value.toString(16).padStart(2, '0');
+                return hex;
+            };
+            return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+        }
+
+        // Function to draw the X shape
+        function drawXShape(mass) {
+            const cellSize = getScale(mass); // Size of each cell in X shape
+            const offset = (500 - cellSize * 3) / 2; // Center the 3x3 X shape in 500x500 canvas
+            const color = getColor(mass);
+
+            // Clear canvas and draw black background
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, 500, 500);
+
+            // Draw X shape cells only
+            ctx.fillStyle = color;
+            for (let i = 0; i < xCells.length; i++) {
+                const row = Math.floor(xCells[i] / 5) - 1; // Adjust to 0-based in 3x3 grid
+                const col = (xCells[i] % 5) - 1;
+                const x = offset + col * cellSize;
+                const y = offset + row * cellSize;
+                ctx.fillRect(x, y, cellSize, cellSize);
+            }
+        }
+
+        // Update canvas when slider changes
+        massSlider.addEventListener('input', () => {
+            const mass = parseInt(massSlider.value);
+            massValue.textContent = `Mass: ${mass}`;
+            drawXShape(mass);
+        });
+
+        // Initial draw
+        drawXShape(1);
+    </script>
+</body>
+</html>
